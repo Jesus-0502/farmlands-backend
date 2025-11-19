@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS projects (
     descripcion TEXT NOT NULL,
     fecha_inicio TEXT NOT NULL,
     fecha_cierre TEXT NOT NULL,
-    estado TEXT NOT NULL DEFAULT 'abierto',
+    estado TEXT NOT NULL DEFAULT 'Habilitado',
     created_at TEXT
 );
 
@@ -83,6 +83,37 @@ CREATE TABLE IF NOT EXISTS projects_data (
     FOREIGN KEY (fk_user) REFERENCES users(id)
 );
 
+-- =============================================
+-- TABLA DE EVENTOS
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event TEXT NOT NULL,
+    module TEXT,
+    created_at TEXT,
+    timestamp TEXT,
+    fk_user INTEGER,
+
+    FOREIGN KEY (fk_user) REFERENCES users(id) ON DELETE CASCADE
+);
+-- =============================================
+-- TABLA DE UNIDADES ESTANDARIZADAS
+-- =============================================
+CREATE TABLE IF NOT EXISTS units (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit TEXT NOT NULL
+);
+-- =============================================
+-- TABLA DE UNIDADES DE MEDIDAS
+-- =============================================
+CREATE TABLE IF NOT EXISTS measurements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dimension TEXT NOT NULL,
+    fk_unit INTEGER,
+
+    FOREIGN KEY (fk_unit) REFERENCES units(id) ON DELETE CASCADE
+);
 -- =============================================
 -- TABLA INTERMEDIA DE DATOS DE PROYECTO - EQUIPOS E IMPLEMENTOS
 -- =============================================
@@ -127,30 +158,27 @@ INSERT INTO roles (role)
 VALUES ("Administrador"), ("Gerente"), ("Analista"), ("Vendedor"), ("Colaborador"), ("Encargado");
 
 -- =============================================
+-- PROYECTOS INICIALES
+-- =============================================
+INSERT INTO projects (descripcion, fecha_inicio, fecha_cierre, created_at)
+VALUES ("Proy 1", "2025-01-01", "2025-01-01", "2025-1-1"),
+       ("Proy 2", "2025-02-01", "2025-02-01", "2025-2-1"),
+       ("Proy 3", "2025-03-01", "2025-03-01", "2025-3-1");
+
+-- =============================================
 -- EQUIPOS E IMPLEMENTOS INICIALES
 -- =============================================
 INSERT INTO tools (descripcion)
 VALUES ("Hacha"), ("Desmalezadora"), ("Machete"), ("Motosierra");
 
 -- =============================================
+-- UNIDADES ESTANDARIZADAS INICIALES
+-- =============================================
+INSERT INTO units (unit)
+VALUES ("Pulgadas"), ("Galon");
+
+-- =============================================
 -- LABORES AGRONÓMICAS INICIALES
 -- =============================================
 INSERT INTO farm_tasks (descripcion)
 VALUES ("Siembra"), ("Preparación del Suelo"), ("Riego"), ("Control de Plagas y Enfermedades"), ("Cosecha");
-
-
-
--- SELECT
---     pj.id,
---     pj.activity,
---     GROUP_CONCAT(pjt.fk_tools),
---     pj.fk_farm_task,
---     pj.fk_project,
---     pj.fk_user,
---     pj.num_human_resources,
---     pj.cost,
---     pj.details
--- FROM projects_data pj
--- INNER JOIN projects_data_tools pjt ON pj.id == pjt.fk_projects_data
--- WHERE UPPER(pj.activity) LIKE UPPER(?)
--- GROUP BY pj.id;

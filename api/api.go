@@ -34,7 +34,8 @@ func (s *APIServer) Run() error {
 	routes.RegisterToolsRoutes(apiRouter, s.DB)
 	routes.RegisterFarmTasksRoutes(apiRouter, s.DB)
 	routes.RegisterProjectDataRoutes(apiRouter, s.DB)
-
+	routes.RegisterLogsRoutes(apiRouter, s.DB)
+	routes.RegisterUnitsRoutes(apiRouter, s.DB)
 	// Middlewares globales
 	handler := middleware.CorsMiddleware(router)
 
