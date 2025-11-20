@@ -9,3 +9,8 @@ type Units struct {
 type UnitID struct {
 	ID int64 `json:"id"`
 }
+
+type MeasurementsUnits struct {
+	ID   int64  `json:"id"`
+	Unit string `json:"unit`
+}

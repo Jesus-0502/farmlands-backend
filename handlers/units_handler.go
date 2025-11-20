@@ -69,6 +69,38 @@ func NewUnitsHandler(db *sql.DB) *UnitsHandler {
 	return &UnitsHandler{DB: db}
 }
 
+func (h *UnitsHandler) HandleListMeasurements(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.DB.Query(`
+		SELECT id, unit FROM units
+	`)
+	if err != nil {
+		utils.SendJSONError(w, http.StatusInternalServerError, "DB_ERROR", "Error al obtener unidades de medida")
+		return
+	}
+	defer rows.Close()
+
+	var units []models.MeasurementsUnits
+	for rows.Next() {
+		var u models.MeasurementsUnits
+
+		if err := rows.Scan(&u.ID, &u.Unit); err != nil {
+			utils.SendJSONError(w, http.StatusInternalServerError, "DB_ERROR", "Error leyendo los datos")
+			return
+		}
+		units = append(units, u)
+	}
+
+	if err := rows.Err(); err != nil {
+		utils.SendJSONError(w, http.StatusInternalServerError, "DB_ERROR", "Error iterando resultados")
+		return
+	}
+
+	if units == nil {
+		units = []models.MeasurementsUnits{}
+	}
+	utils.SendJSONSuccess(w, units)
+}
+
 func (h *UnitsHandler) HandleAddUnit(w http.ResponseWriter, r *http.Request) {
 	var input models.Units
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -191,6 +223,10 @@ func (h *UnitsHandler) HandleSearchUnit(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		measurements = append(measurements, m)
+	}
+
+	if measurements == nil {
+		measurements = []Measurements{}
 	}
 
 	utils.SendJSONSuccess(w, measurements)

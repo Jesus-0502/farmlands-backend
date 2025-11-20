@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"farmlands-backend/models"
 	"farmlands-backend/utils"
+	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -25,6 +26,7 @@ func (h *LogsHandler) HandleAddLog(w http.ResponseWriter, r *http.Request) {
 		utils.SendJSONError(w, http.StatusBadRequest, "INVALID_JSON", "JSON inválido")
 		return
 	}
+	fmt.Println("Log recibido:", input)
 
 	// Validación del timestamp
 	regex := regexp.MustCompile(`^(0[1-9]|1[0-2]):([0-5][0-9]) (am|pm)$`)
@@ -106,7 +108,7 @@ func (h *LogsHandler) HandleSearchLog(w http.ResponseWriter, r *http.Request) {
 		rows, err = h.DB.Query("SELECT e.id, e.event, e.module, e.created_at, u.username, e.timestamp FROM events e INNER JOIN users u ON e.fk_user = u.id")
 	} else {
 		rows, err = h.DB.Query(
-			"SELECT e.id, e.event, e.module, e.created_at, u.username, e.timestamp FROM events e INNER JOIN users u ON e.fk_user = u.id WHERE UPPER(event) LIKE UPPER($1) OR UPPER(module) LIKE UPPER($1) OR timestamp LIKE $1",
+			"SELECT e.id, e.event, e.module, e.created_at, u.username, e.timestamp FROM events e INNER JOIN users u ON e.fk_user = u.id WHERE UPPER(u.username) LIKE UPPER($1) OR UPPER(event) LIKE UPPER($1) OR UPPER(module) LIKE UPPER($1) OR timestamp LIKE $1",
 			"%"+query+"%",
 		)
 	}
@@ -134,6 +136,10 @@ func (h *LogsHandler) HandleSearchLog(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		logs = append(logs, l)
+	}
+
+	if logs == nil {
+		logs = []Log{}
 	}
 
 	utils.SendJSONSuccess(w, logs)
