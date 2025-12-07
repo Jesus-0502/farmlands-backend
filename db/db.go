@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS projects_data (
 );
 
 -- =============================================
--- TABLA DE EVENTOS
+-- TABLA DE EVENTOS/LOGGER
 -- =============================================
 
 CREATE TABLE IF NOT EXISTS events (
@@ -194,7 +194,34 @@ CREATE TABLE IF NOT EXISTS user_projects (
     UNIQUE(user_id, project_id)
 );
 
+-- =============================================
+-- TABLA DE PLANES DE ACCIÓN
+-- =============================================
+CREATE TABLE IF NOT EXISTS action_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_project INTEGER,
+    id_farm_task INTEGER,
+    action_description TEXT,
+    fecha_inicio TEXT,
+    fecha_cierre TEXT, 
+    cantidad_horas FLOAT,
+    id_responsable INTEGER,
+    tiempo_recurso_humano FLOAT,
+    cantidad_de_dias TEXT,
+    costo_recurso_humano FLOAT,
+    monto_recurso_humano FLOAT GENERATED ALWAYS AS (costo_recurso_humano * tiempo_recurso_humano),
+    categoria_insumo_material TEXT,
+    descripcion_insumo_material TEXT,
+    cantidad_insumo_material INTEGER,
+    costo_insumo_material FLOAT,
+    id_medida INTEGER, 
+    monto_insumo_material FLOAT GENERATED ALWAYS AS (costo_insumo_material * cantidad_insumo_material),
+    monto_total FLOAT GENERATED ALWAYS AS (monto_recurso_humano + monto_insumo_material),
 
+    FOREIGN KEY (id_project) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_farm_task) REFERENCES farm_tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (id_responsable) REFERENCES users(id) ON DELETE CASCADE
+);
 
 -- =============================================
 -- USUARIO ADMINISTRADOR INICIAL Y TRABAJADORES INICIALES

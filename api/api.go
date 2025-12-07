@@ -36,6 +36,7 @@ func (s *APIServer) Run() error {
 	routes.RegisterProjectDataRoutes(apiRouter, s.DB)
 	routes.RegisterLogsRoutes(apiRouter, s.DB)
 	routes.RegisterUnitsRoutes(apiRouter, s.DB)
+	routes.RegisterActionPlanRoutes(apiRouter, s.DB)
 	// Middlewares globales
 	handler := middleware.CorsMiddleware(router)
 
