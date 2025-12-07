@@ -10,7 +10,7 @@ type ActionPlan struct {
 	ID              int64   `json:"id"`
 	Actividad       string  `json:"actividad"`
 	LaborAgronomica int64   `json:"laborAgronomica"`
-	Encargado       int64   `json:"encargado"`
+	IDResponsable   int64   `json:"id_responsable"`
 	Fecha_Inicio    string  `json:"fecha_inicio"`
 	Fecha_Cierre    string  `json:"fecha_cierre"`
 	CantidadHoras   float64 `json:"cantidadHoras"`

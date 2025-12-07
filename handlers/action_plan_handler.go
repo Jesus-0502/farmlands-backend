@@ -24,7 +24,7 @@ func (h *ActionPlanHandler) HandleNewActionPlan(w http.ResponseWriter, r *http.R
 	var input struct {
 		Actividad       string  `json:"actividad"`
 		LaborAgronomica int64   `json:"laborAgronomica"`
-		Encargado       int64   `json:"encargado"`
+		IDResponsable   int64   `json:"id_responsable"`
 		IDProject       int64   `json:"idProject"`
 		FechaInicio     string  `json:"fecha_inicio"`
 		FechaCierre     string  `json:"fecha_cierre"`
@@ -39,7 +39,7 @@ func (h *ActionPlanHandler) HandleNewActionPlan(w http.ResponseWriter, r *http.R
 	}
 
 	// ---------- Validación de campos obligatorios ----------
-	if input.Actividad == "" || input.LaborAgronomica == 0 || input.Encargado == 0 || input.IDProject == 0 {
+	if input.Actividad == "" || input.LaborAgronomica == 0 || input.IDResponsable == 0 || input.IDProject == 0 {
 		utils.SendJSONError(w, http.StatusBadRequest, "INVALID_DATA", "Campos obligatorios faltantes")
 		return
 	}
@@ -52,7 +52,7 @@ func (h *ActionPlanHandler) HandleNewActionPlan(w http.ResponseWriter, r *http.R
 	`
 
 	// Dentro del handler después de decodificar el JSON:
-	const layout = "02-01-2006"
+	const layout = "2006-01-02"
 
 	if input.FechaInicio != "" {
 		if _, err := time.Parse(layout, input.FechaInicio); err != nil {
@@ -74,7 +74,7 @@ func (h *ActionPlanHandler) HandleNewActionPlan(w http.ResponseWriter, r *http.R
 		input.FechaInicio,
 		input.FechaCierre,
 		input.CantidadHoras,
-		input.Encargado,
+		input.IDResponsable,
 	)
 
 	if err != nil {
@@ -89,7 +89,7 @@ func (h *ActionPlanHandler) HandleNewActionPlan(w http.ResponseWriter, r *http.R
 		ID:              idEntry,
 		Actividad:       input.Actividad,
 		LaborAgronomica: input.LaborAgronomica,
-		Encargado:       input.Encargado,
+		IDResponsable:   input.IDResponsable,
 		Fecha_Inicio:    input.FechaInicio,
 		Fecha_Cierre:    input.FechaCierre,
 		CantidadHoras:   input.CantidadHoras,
@@ -274,7 +274,7 @@ func (h *ActionPlanHandler) HandleEditActionPlan(w http.ResponseWriter, r *http.
 	}
 
 	// 2. Validación de fechas (igual que antes)
-	const layout = "02-01-2006"
+	const layout = "2006-01-02"
 	if input.Fecha_Inicio != "" {
 		if _, err := time.Parse(layout, input.Fecha_Inicio); err != nil {
 			utils.SendJSONError(w, http.StatusBadRequest, "INVALID_DATE", "fecha_inicio debe tener formato DD-MM-AAAA")
