@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strings"
 )
 
 type LogsHandler struct {
@@ -97,24 +98,149 @@ func (h *LogsHandler) HandleDeleteLog(w http.ResponseWriter, r *http.Request) {
 
 	utils.SendJSONSuccess(w, "Log eliminado correctamente")
 }
+func flipDateFormat(in string) string {
+	parts := strings.Split(in, "-")
+	if len(parts) != 3 {
+		return in
+	}
+	return parts[2] + "-" + parts[1] + "-" + parts[0]
+}
+func getMonth(in string) string {
+	parts := strings.Split(in, "-")
+	if len(parts) != 3 {
+		return ""
+	}
+	return parts[1]
+}
+
+func getYear(in string) string {
+	parts := strings.Split(in, "-")
+	if len(parts) != 3 {
+		return ""
+	}
+	return parts[0]
+}
 
 func (h *LogsHandler) HandleSearchLog(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query().Get("q") // texto buscado
+	query := r.URL.Query().Get("q")
+	filter := r.URL.Query().Get("f")
+	content := r.URL.Query().Get("c")
 
-	// Si no hay query, devolvemos todos los suplementos
+	baseQuery := `
+		SELECT e.id, e.event, e.module, e.created_at, u.username, e.timestamp
+		FROM events e
+		INNER JOIN users u ON e.fk_user = u.id
+	`
+
+	extraFilter := ""
+	// convierte "YYYY-MM-DD" a "DD-MM-YYYY"
+
+	args := []interface{}{}
+
+	// --------------------------------------------------------
+	// Aplicar filtro SOLO si f y c existen ambos
+	// --------------------------------------------------------
+
+	if filter != "" && content != "" {
+
+		switch filter {
+
+		case "day":
+			converted := flipDateFormat(content)
+			log.Println("FECHA ANTES:", content)
+			log.Println("FECHA DESPUES:", converted)
+			extraFilter = " WHERE e.created_at LIKE $1"
+			args = append(args, converted)
+
+		case "month":
+			month := content // "12"
+			extraFilter = " WHERE SUBSTRING(e.created_at, 4, 2) LIKE $1"
+			args = append(args, month)
+
+		case "quarter":
+			var q string = strings.ToUpper(content)
+
+			// Caso 1: El usuario envía Q1, Q2, Q3, Q4
+			if q == "Q1" {
+				extraFilter = " WHERE SUBSTRING(e.created_at, 4, 2) IN ('01','02','03')"
+			} else if q == "Q2" {
+				extraFilter = " WHERE SUBSTRING(e.created_at, 4, 2) IN ('04','05','06')"
+			} else if q == "Q3" {
+				extraFilter = " WHERE SUBSTRING(e.created_at, 4, 2) IN ('07','08','09')"
+			} else if q == "Q4" {
+				extraFilter = " WHERE SUBSTRING(e.created_at, 4, 2) IN ('10','11','12')"
+			}
+
+		case "year":
+			c := strings.TrimSpace(content)
+
+			// Si viene solo el año: "2025"
+			if len(c) == 4 {
+				extraFilter = " WHERE SUBSTRING(e.created_at, 7, 4) = $1"
+				args = append(args, c)
+				break
+			}
+
+			// Si viene como fecha "2025-12-06"
+			year := getYear(c)
+			if year != "" {
+				extraFilter = " WHERE SUBSTRING(e.created_at, 7, 4) = $1"
+				args = append(args, year)
+			}
+
+		case "period":
+			parts := strings.Split(content, ",")
+			if len(parts) == 2 {
+				start := flipDateFormat(strings.TrimSpace(parts[0])) // ahora retorna YYYY-MM-DD
+				end := flipDateFormat(strings.TrimSpace(parts[1]))
+
+				extraFilter = `
+					WHERE 
+						SUBSTR(e.created_at, 7, 4) || '-' || 
+						SUBSTR(e.created_at, 4, 2) || '-' || 
+						SUBSTR(e.created_at, 1, 2)
+					BETWEEN $1 AND $2
+				`
+				args = append(args, start, end)
+			}
+		}
+	}
+	// --------------------------------------------------------
+	// Agregar búsqueda textual si existe query q
+	// --------------------------------------------------------
+
 	var rows *sql.Rows
 	var err error
-	if query == "" {
-		rows, err = h.DB.Query("SELECT e.id, e.event, e.module, e.created_at, u.username, e.timestamp FROM events e INNER JOIN users u ON e.fk_user = u.id")
+
+	if query != "" {
+		search := "%" + query + "%"
+
+		if extraFilter == "" {
+			extraFilter = " WHERE "
+		} else {
+			extraFilter += " AND "
+		}
+
+		fullQuery := baseQuery + extraFilter + `
+			(
+				UPPER(u.username) LIKE UPPER($1) 
+				OR UPPER(e.event) LIKE UPPER($1) 
+				OR UPPER(e.module) LIKE UPPER($1) 
+				OR e.created_at LIKE $1
+			)
+		`
+
+		rows, err = h.DB.Query(fullQuery, append(args, search)...)
+
 	} else {
-		rows, err = h.DB.Query(
-			"SELECT e.id, e.event, e.module, e.created_at, u.username, e.timestamp FROM events e INNER JOIN users u ON e.fk_user = u.id WHERE UPPER(u.username) LIKE UPPER($1) OR UPPER(event) LIKE UPPER($1) OR UPPER(module) LIKE UPPER($1) OR timestamp LIKE $1",
-			"%"+query+"%",
-		)
+		// Sin texto buscado
+		fullQuery := baseQuery + extraFilter
+		rows, err = h.DB.Query(fullQuery, args...)
 	}
 
 	if err != nil {
 		utils.SendJSONError(w, http.StatusInternalServerError, "DB_ERROR", "Error en la búsqueda")
+		log.Println("Error decodificando JSON:", err)
 		return
 	}
 	defer rows.Close()
