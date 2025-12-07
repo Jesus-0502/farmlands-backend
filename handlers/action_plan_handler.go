@@ -262,7 +262,7 @@ func (h *ActionPlanHandler) HandleSearchActionPlan(w http.ResponseWriter, r *htt
 func (h *ActionPlanHandler) HandleEditActionPlan(w http.ResponseWriter, r *http.Request) {
 	var input models.ActionPlanEdit
 
-	// 1. Decodificación del JSON (usando el struct original con primitivos)
+	// ============= 1. DECODIFICAR JSON =============
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		utils.SendJSONError(w, http.StatusBadRequest, "INVALID_JSON", "JSON inválido")
 		return
@@ -273,22 +273,24 @@ func (h *ActionPlanHandler) HandleEditActionPlan(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// 2. Validación de fechas (igual que antes)
+	// ============= 2. VALIDACIÓN DE FECHAS =============
 	const layout = "2006-01-02"
+
 	if input.Fecha_Inicio != "" {
 		if _, err := time.Parse(layout, input.Fecha_Inicio); err != nil {
-			utils.SendJSONError(w, http.StatusBadRequest, "INVALID_DATE", "fecha_inicio debe tener formato DD-MM-AAAA")
-			return
-		}
-	}
-	if input.Fecha_Cierre != "" {
-		if _, err := time.Parse(layout, input.Fecha_Cierre); err != nil {
-			utils.SendJSONError(w, http.StatusBadRequest, "INVALID_DATE", "fecha_cierre debe tener formato DD-MM-AAAA")
+			utils.SendJSONError(w, http.StatusBadRequest, "INVALID_DATE", "fecha_inicio debe tener formato YYYY-MM-DD")
 			return
 		}
 	}
 
-	// 3. Construcción de query dinámica (igual que antes)
+	if input.Fecha_Cierre != "" {
+		if _, err := time.Parse(layout, input.Fecha_Cierre); err != nil {
+			utils.SendJSONError(w, http.StatusBadRequest, "INVALID_DATE", "fecha_cierre debe tener formato YYYY-MM-DD")
+			return
+		}
+	}
+
+	// ============= 3. BUILD DINÁMICO DEL UPDATE =============
 	query := "UPDATE action_plans SET "
 	params := []interface{}{}
 	changes := 0
@@ -304,16 +306,12 @@ func (h *ActionPlanHandler) HandleEditActionPlan(w http.ResponseWriter, r *http.
 		{input.Fecha_Cierre, "fecha_cierre = ?"},
 		{input.CantidadHoras, "cantidad_horas = ?"},
 		{input.TiempoRecursoHumano, "tiempo_recurso_humano = ?"},
-		{input.MontoRecursoHumano, "monto_recurso_humano = ?"},
 		{input.CostoRecursoHumano, "costo_recurso_humano = ?"},
 		{input.CategoriaInsumoMaterial, "categoria_insumo_material = ?"},
 		{input.DescripcionInsumoMaterial, "descripcion_insumo_material = ?"},
-		// NOTA: Asume que has corregido el nombre de la columna en la DB o aquí:
 		{input.CantidadInsumoMaterial, "cantidad_insumo_material = ?"},
 		{input.IDMedida, "id_medida = ?"},
-		{input.MontoInsumoMaterial, "monto_insumo_material = ?"},
 		{input.CostoInsumoMaterial, "costo_insumo_material = ?"},
-		{input.MontoTotal, "monto_total = ?"},
 	}
 
 	for _, f := range fields {
@@ -344,38 +342,29 @@ func (h *ActionPlanHandler) HandleEditActionPlan(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// 4. Ejecución del UPDATE
+	// Finalizamos query
 	query = query[:len(query)-2] + " WHERE id = ?"
 	params = append(params, input.ID)
 
-	res, err := h.DB.Exec(query, params...)
+	// ============= 4. EJECUTAR UPDATE =============
+	_, err := h.DB.Exec(query, params...)
 	if err != nil {
+		log.Println("Error UPDATE:", err)
 		utils.SendJSONError(w, http.StatusInternalServerError, "DB_ERROR", "Error actualizando plan de acción")
 		return
 	}
 
-	affected, _ := res.RowsAffected()
-	if affected == 0 {
-		utils.SendJSONError(w, http.StatusNotFound, "NOT_FOUND", "Registro no encontrado")
-		return
-	}
-
-	// =================================================================
-	// 5. SOLUCIÓN AL ERROR DE SCAN (Usando struct anónimo temporal)
-	// =================================================================
-
-	// Definición de una estructura anónima TEMPORAL para escanear.
-	// TODOS los campos que pueden ser NULL en la DB deben ser sql.Null*.
-	var tempResult struct {
+	// ============= 5. SCAN CON sql.NullXXX PARA EVITAR 500 =============
+	var temp struct {
 		ID                        int64
 		IDProject                 sql.NullInt64
-		IDFarmTask                sql.NullInt64
 		ActionDescription         sql.NullString
+		IDFarmTask                sql.NullInt64
+		IDResponsable             sql.NullInt64
 		Fecha_Inicio              sql.NullString
 		Fecha_Cierre              sql.NullString
 		CantidadHoras             sql.NullFloat64
-		IDResponsable             sql.NullInt64
-		TiempoRecursoHumano       sql.NullFloat64 // ¡Este era el que fallaba!
+		TiempoRecursoHumano       sql.NullFloat64
 		MontoRecursoHumano        sql.NullFloat64
 		CostoRecursoHumano        sql.NullFloat64
 		CategoriaInsumoMaterial   sql.NullString
@@ -387,118 +376,80 @@ func (h *ActionPlanHandler) HandleEditActionPlan(w http.ResponseWriter, r *http.
 		MontoTotal                sql.NullFloat64
 	}
 
-	// Ejecución del SELECT (debe coincidir con los 18 campos anteriores)
 	row := h.DB.QueryRow(`
-        SELECT
-            id,
-            id_project,
-            id_farm_task,
-            action_description,
-            fecha_inicio,
-            fecha_cierre,
-            cantidad_horas,
-            id_responsable,
-            tiempo_recurso_humano,
-            monto_recurso_humano,
-            costo_recurso_humano,
-            categoria_insumo_material,
-            descripcion_insumo_material,
-            cantidad_insumo_material,
-            id_medida,
-            monto_insumo_material,
-            costo_insumo_material,
-            monto_total
-        FROM action_plans
-        WHERE id = ?
+        SELECT id, id_project, action_description, id_farm_task, id_responsable,
+               fecha_inicio, fecha_cierre, cantidad_horas,
+               tiempo_recurso_humano, monto_recurso_humano, costo_recurso_humano,
+               categoria_insumo_material, descripcion_insumo_material,
+               cantidad_insumo_material, id_medida,
+               monto_insumo_material, costo_insumo_material, monto_total
+        FROM action_plans WHERE id = ?
     `, input.ID)
 
-	// El Scan ahora usa las referencias de la estructura temporal (sql.Null*)
 	err = row.Scan(
-		&tempResult.ID,
-		&tempResult.IDProject,
-		&tempResult.IDFarmTask,
-		&tempResult.ActionDescription,
-		&tempResult.Fecha_Inicio,
-		&tempResult.Fecha_Cierre,
-		&tempResult.CantidadHoras,
-		&tempResult.IDResponsable,
-		&tempResult.TiempoRecursoHumano,
-		&tempResult.MontoRecursoHumano,
-		&tempResult.CostoRecursoHumano,
-		&tempResult.CategoriaInsumoMaterial,
-		&tempResult.DescripcionInsumoMaterial,
-		&tempResult.CantidadInsumoMaterial,
-		&tempResult.IDMedida,
-		&tempResult.MontoInsumoMaterial,
-		&tempResult.CostoInsumoMaterial,
-		&tempResult.MontoTotal,
+		&temp.ID, &temp.IDProject, &temp.ActionDescription, &temp.IDFarmTask,
+		&temp.IDResponsable, &temp.Fecha_Inicio, &temp.Fecha_Cierre, &temp.CantidadHoras,
+		&temp.TiempoRecursoHumano, &temp.MontoRecursoHumano, &temp.CostoRecursoHumano,
+		&temp.CategoriaInsumoMaterial, &temp.DescripcionInsumoMaterial,
+		&temp.CantidadInsumoMaterial, &temp.IDMedida,
+		&temp.MontoInsumoMaterial, &temp.CostoInsumoMaterial, &temp.MontoTotal,
 	)
 
 	if err != nil {
-		// Maneja errores de DB/Scan (incluyendo un NULL inesperado)
+		log.Println("SCAN error:", err)
 		utils.SendJSONError(w, http.StatusInternalServerError, "DB_ERROR", "Error recuperando registro actualizado")
 		return
 	}
 
-	// 6. Mapeo de vuelta al Struct de Respuesta (ActionPlanEdit)
+	// ============= 6. MAPEO FÁCIL AL MODELO FINAL =============
 	var result models.ActionPlanEdit
+	result.ID = temp.ID
 
-	// Mapeo del ID
-	result.ID = tempResult.ID
-
-	// Mapeo condicional: Solo asigna si el valor no es NULL (Valid = true)
-	if tempResult.IDProject.Valid {
-		result.IDProject = tempResult.IDProject.Int64
+	if temp.IDProject.Valid {
+		result.IDProject = temp.IDProject.Int64
 	}
-	if tempResult.IDFarmTask.Valid {
-		result.IDFarmTask = tempResult.IDFarmTask.Int64
+	if temp.ActionDescription.Valid {
+		result.ActionDescription = temp.ActionDescription.String
 	}
-	if tempResult.ActionDescription.Valid {
-		result.ActionDescription = tempResult.ActionDescription.String
+	if temp.IDFarmTask.Valid {
+		result.IDFarmTask = temp.IDFarmTask.Int64
 	}
-	if tempResult.Fecha_Inicio.Valid {
-		result.Fecha_Inicio = tempResult.Fecha_Inicio.String
+	if temp.IDResponsable.Valid {
+		result.IDResponsable = temp.IDResponsable.Int64
 	}
-	if tempResult.Fecha_Cierre.Valid {
-		result.Fecha_Cierre = tempResult.Fecha_Cierre.String
+	if temp.Fecha_Inicio.Valid {
+		result.Fecha_Inicio = temp.Fecha_Inicio.String
 	}
-	if tempResult.CantidadHoras.Valid {
-		result.CantidadHoras = tempResult.CantidadHoras.Float64
+	if temp.Fecha_Cierre.Valid {
+		result.Fecha_Cierre = temp.Fecha_Cierre.String
 	}
-	if tempResult.IDResponsable.Valid {
-		result.IDResponsable = tempResult.IDResponsable.Int64
+	if temp.CantidadHoras.Valid {
+		result.CantidadHoras = temp.CantidadHoras.Float64
 	}
-	if tempResult.TiempoRecursoHumano.Valid {
-		result.TiempoRecursoHumano = tempResult.TiempoRecursoHumano.Float64
-	}
-	if tempResult.MontoRecursoHumano.Valid {
-		result.MontoRecursoHumano = tempResult.MontoRecursoHumano.Float64
-	}
-	if tempResult.CostoRecursoHumano.Valid {
-		result.CostoRecursoHumano = tempResult.CostoRecursoHumano.Float64
-	}
-	if tempResult.CategoriaInsumoMaterial.Valid {
-		result.CategoriaInsumoMaterial = tempResult.CategoriaInsumoMaterial.String
-	}
-	if tempResult.DescripcionInsumoMaterial.Valid {
-		result.DescripcionInsumoMaterial = tempResult.DescripcionInsumoMaterial.String
-	}
-	if tempResult.CantidadInsumoMaterial.Valid {
-		result.CantidadInsumoMaterial = tempResult.CantidadInsumoMaterial.Int64
-	}
-	if tempResult.IDMedida.Valid {
-		result.IDMedida = tempResult.IDMedida.Int64
-	}
-	if tempResult.MontoInsumoMaterial.Valid {
-		result.MontoInsumoMaterial = tempResult.MontoInsumoMaterial.Float64
-	}
-	if tempResult.CostoInsumoMaterial.Valid {
-		result.CostoInsumoMaterial = tempResult.CostoInsumoMaterial.Float64
-	}
-	if tempResult.MontoTotal.Valid {
-		result.MontoTotal = tempResult.MontoTotal.Float64
+	if temp.TiempoRecursoHumano.Valid {
+		result.TiempoRecursoHumano = temp.TiempoRecursoHumano.Float64
 	}
 
-	// 7. Respuesta de éxito
+	if temp.CostoRecursoHumano.Valid {
+		result.CostoRecursoHumano = temp.CostoRecursoHumano.Float64
+	}
+	if temp.CategoriaInsumoMaterial.Valid {
+		result.CategoriaInsumoMaterial = temp.CategoriaInsumoMaterial.String
+	}
+	if temp.DescripcionInsumoMaterial.Valid {
+		result.DescripcionInsumoMaterial = temp.DescripcionInsumoMaterial.String
+	}
+	if temp.CantidadInsumoMaterial.Valid {
+		result.CantidadInsumoMaterial = temp.CantidadInsumoMaterial.Int64
+	}
+	if temp.IDMedida.Valid {
+		result.IDMedida = temp.IDMedida.Int64
+	}
+
+	if temp.CostoInsumoMaterial.Valid {
+		result.CostoInsumoMaterial = temp.CostoInsumoMaterial.Float64
+	}
+
+	// ============= 7. RESPUESTA =============
 	utils.SendJSONSuccess(w, result)
 }
